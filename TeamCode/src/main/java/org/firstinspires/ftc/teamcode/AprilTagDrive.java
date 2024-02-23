@@ -25,9 +25,6 @@ import java.util.List;
 /**
  * Experimental extension of MecanumDrive that uses AprilTags for relocalization.
  *
- * NOTE: I PLAN TO CREATE A CLEANED UP VERSION OF THIS TO DISTRIBUTE, this has some weird specific-to-my-codebase stuff
- * also, TODO: get rid of the kalman filter, vision helper, and multi cam
- *
  * Released under the BSD 3-Clause Clear License by j5155 from 12087 Capital City Dynamics
  * Portions of this code made and released under the BSD 3-Clause Clear License by Michael from 14343 and by Ryan Brott
  */
