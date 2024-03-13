@@ -19,6 +19,7 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -27,44 +28,63 @@ import java.util.List;
  * Released under the BSD 3-Clause Clear License by j5155 from 12087 Capital City Dynamics
  * Portions of this code made and released under the BSD 3-Clause Clear License by Michael from 14343 and by Ryan Brott
  */
-public class AprilTagDrive extends MecanumDrive {
+public class TwoCamAprilTagDrive extends MecanumDrive {
     @Config
     static class Params {
         // distance FROM robot center TO camera (inches)
         // TODO: tune
-        static Vector2d cameraOffset = new Vector2d(
+        static Vector2d camera1Offset = new Vector2d(
                 -6,
                 4);
-
+        // if you don't have a second camera this doesn't matter
+        static Vector2d camera2Offset = new Vector2d(
+                0,
+                -5);//6);
+        static double cameraYawOffset = Math.toRadians(180); // TODO: tune
         /*
-         * Q model covariance (trust in model), default 0.1 HIGHER IS LESS TRUST
+         * Q model covariance (trust in model), default 0.1
          * R sensor covariance (trust in sensor), default 0.4
          */
-        static double kalmanFilterQ = 0.4;
-        static double kalmanFilterR = 0.1;
+        static double kalmanFilterQ = 0.1;
+        static double kalmanFilterR = 0.4;
     }
 
     Vector2d cameraOffset;
-    final AprilTagProcessor aprilTag;
-    public List<AprilTagDetection> currentDetections;
+    final AprilTagProcessor aprilTagBack;
+    AprilTagProcessor aprilTagFront = null;
+    public List<AprilTagDetection> totalDetections;
     public AprilTagDetection lastDetection;
     final KalmanFilter.Vector2dKalmanFilter posFilter;
     Pose2d aprilPose;
     Pose2d localizerPose;
     Vector2d filteredVector;
     boolean frontCamActive = true;
+    boolean backCamActive = true;
     /**
      * Init with just one camera; use instead of MecanumDrive
      * @param hardwareMap the hardware map
      * @param pose the starting pose
-     * @param aprilTag your camera's AprilTagProcessor
+     * @param aprilTagBack your camera's AprilTagProcessor
      */
-    public AprilTagDrive(HardwareMap hardwareMap, Pose2d pose, AprilTagProcessor aprilTag) {
+    public TwoCamAprilTagDrive(HardwareMap hardwareMap, Pose2d pose, AprilTagProcessor aprilTagBack) {
         super(hardwareMap, pose);
-        this.aprilTag = aprilTag;
+        this.aprilTagBack = aprilTagBack;
         this.posFilter = new KalmanFilter.Vector2dKalmanFilter(Params.kalmanFilterQ, Params.kalmanFilterR);
-        this.cameraOffset = Params.cameraOffset;
+        this.cameraOffset = Params.camera1Offset;
 
+    }
+    /**
+     * Init with two cameras; use instead of MecanumDrive
+     * @param hardwareMap the hardware map
+     * @param pose the starting pose
+     * @param aprilTagBack back camera's apriltag processor
+     * @param aprilTagFront your second camera's AprilTagProcessor
+     */
+    public TwoCamAprilTagDrive(HardwareMap hardwareMap, Pose2d pose, AprilTagProcessor aprilTagBack, AprilTagProcessor aprilTagFront) {
+        super(hardwareMap, pose);
+        this.aprilTagBack = aprilTagBack;
+        this.aprilTagFront = aprilTagFront;
+        this.posFilter = new KalmanFilter.Vector2dKalmanFilter(Params.kalmanFilterQ, Params.kalmanFilterR);
     }
     @Override
     public PoseVelocity2d updatePoseEstimate() {
@@ -90,8 +110,7 @@ public class AprilTagDrive extends MecanumDrive {
             pose = new Pose2d(aprilVector, localizerPose.heading); // TODO: aprilVector should be filteredVector to use kalman filter (kalman filter is untested)
         } else {
             // if we can't see tags, we use the localizer position to update the kalman fiter
-            // not sure if this is logical at all??
-            // UNTESTED, WE WERENT USING FILTEREDVECTOR :skull:
+            // not sure if this is logical at all?? seems to work
             filteredVector = posFilter.update(twist.value(), localizerPose.position);
 
             // then just use the existing pose
@@ -111,28 +130,56 @@ public class AprilTagDrive extends MecanumDrive {
         return twist.velocity().value(); // trust the existing localizer for speeds; because I don't know how to do it with apriltags
     }
     public Vector2d getVectorBasedOnTags() {
-        currentDetections = aprilTag.getDetections();
+        List<AprilTagDetection> currentDetections = new ArrayList<>();
+        if (backCamActive) {
+            currentDetections = aprilTagBack.getDetections();
+        }
+        List<AprilTagDetection> cam2Detections = new ArrayList<>();
+        if (aprilTagFront != null && frontCamActive) {
+            cam2Detections = aprilTagFront.getDetections();
+        }
+        totalDetections = new ArrayList<>();
+        totalDetections.addAll(currentDetections);
+        totalDetections.addAll(cam2Detections);
+        int totalDetections = 0;
         Vector2d averagePos = new Vector2d(0,0); // starting pose to add the rest to
-        if (this.currentDetections.isEmpty()) return null; // if we don't see any tags, give up (USES NEED TO HANDLE NULL)
+        if (this.totalDetections.isEmpty()) return null; // if we don't see any tags, give up (USES NEED TO HANDLE NULL)
         Vector2d RobotPos;
 
         // Step through the list of detections and calculate the robot position from each one.
         for (AprilTagDetection detection : currentDetections) {
             if (detection.metadata != null) {
 
-                RobotPos = getFCPosition(detection, localizerPose.heading.log(), Params.cameraOffset);
+                RobotPos = getFCPosition(detection, localizerPose.heading.log(),false);
 
                 // we're going to get the average here by adding them all up and dividingA the number of detections
                 // we do this because the backdrop has 3 tags, so we get 3 positions
                 // hopefully by averaging them we can get a more accurate position
                 lastDetection = detection;
                 averagePos = averagePos.plus(RobotPos);
+                totalDetections++;
 
             }
         }   // end for() loop
 
+        if (!cam2Detections.isEmpty()) {
+            // Step through the list of detections and calculate the robot position from each one.
+            for (AprilTagDetection detection : cam2Detections) {
+                if (detection.metadata != null) {
+                    RobotPos = getFCPosition(detection, localizerPose.heading.log(), true);
+
+                    // we're going to get the average here by adding them all up and dividing by the number of detections
+                    // we do this because the backdrop has 3 tags, so we get 3 positions
+                    // hopefully by averaging them we can get a more accurate position
+                    lastDetection = detection;
+                    averagePos = averagePos.plus(RobotPos);
+                    totalDetections++;
+
+                }
+            }   // end for() loop
+        }
         // divide by the number of detections to get the true average, as explained earlier
-        return averagePos.div(currentDetections.size());
+        return averagePos.div(totalDetections);
     }
 
     /**
@@ -140,7 +187,9 @@ public class AprilTagDrive extends MecanumDrive {
      * @param botheading In Radians.
      * @return FC Pose of bot.
      */
-    public Vector2d getFCPosition(AprilTagDetection detection, double botheading, Vector2d cameraOffset) {
+    public Vector2d getFCPosition(AprilTagDetection detection, double botheading, boolean usingCam2) {
+        Vector2d cameraOffset;
+        if (usingCam2) {cameraOffset = Params.camera2Offset;} else {cameraOffset = Params.camera1Offset;}
         // get coordinates of the robot in RC coordinates
         // ensure offsets are RC
         double x = detection.ftcPose.x-cameraOffset.x;
@@ -148,6 +197,7 @@ public class AprilTagDrive extends MecanumDrive {
 
         // invert heading to correct properly
         botheading = -botheading;
+
 
         // rotate RC coordinates to be field-centric
         double x2 = x*Math.cos(botheading)+y*Math.sin(botheading);
@@ -157,23 +207,19 @@ public class AprilTagDrive extends MecanumDrive {
         // add FC coordinates to apriltag position
         // tags is just the CS apriltag library
         VectorF tagpose = getCenterStageTagLibrary().lookupTag(detection.id).fieldPosition;
-
-
-        // todo: this will need to be changed for next season (use tag heading to automate??)
-        if (!detection.metadata.name.contains("Audience")) { // is it a backdrop tag?
+        if (detection.metadata.id <= 6) {
             absX = tagpose.get(0) + y2;
             absY = tagpose.get(1) - x2;
 
         } else {
             absX = tagpose.get(0) - y2;
-            absY = tagpose.get(1) + x2;
+            absY = tagpose.get(1) + x2; // prev -
 
         }
         return new Vector2d(absX, absY);
     }
 
     // this custom position library credit Michael from team 14343 (@overkil on Discord)
-    // TODO: will need to be changed for 24-25 season
     public static AprilTagLibrary getCenterStageTagLibrary()
     {
         return new AprilTagLibrary.Builder()
