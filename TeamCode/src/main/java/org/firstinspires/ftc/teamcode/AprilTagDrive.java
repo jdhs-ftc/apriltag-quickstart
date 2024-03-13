@@ -108,24 +108,13 @@ public class AprilTagDrive extends MecanumDrive {
         return twist.velocity().value(); // trust the existing localizer for speeds; because I don't know how to do it with apriltags
     }
     public Vector2d getVectorBasedOnTags() {
-        currentDetections = aprilTag.getDetections();
-        Vector2d averagePos = new Vector2d(0,0); // starting pose to add the rest to
-        if (this.currentDetections.isEmpty()) return null; // if we don't see any tags, give up (USES NEED TO HANDLE NULL)
-
-        // Step through the list of detections and calculate the robot position from each one.
-        for (AprilTagDetection detection : currentDetections) {
-            if (detection.metadata != null) {
-
-                // we're going to get the average here by adding them all up and dividing by the number of detections
-                // we do this because the backdrop has 3 tags, so we get 3 positions
-                // hopefully by averaging them we can get a more accurate position
-                averagePos = averagePos.plus(getFCPosition(detection, localizerPose.heading.log(), Params.cameraOffset));
-
-            }
-        }   // end for() loop
-
-        // divide by the number of detections to get the true average, as explained earlier
-        return averagePos.div(currentDetections.size());
+        return aprilTag.getDetections().stream() // get the tag detections as a Java stream
+                // convert them to Vector2d positions using getFCPosition
+                .map(detection -> getFCPosition(detection, localizerPose.heading.log(), Params.cameraOffset))
+                // add them together
+                .reduce(new Vector2d(0, 0), Vector2d::plus)
+                // divide by the number of tags to get the average
+                .div(aprilTag.getDetections().size());
     }
 
     /**
