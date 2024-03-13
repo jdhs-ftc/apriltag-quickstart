@@ -23,7 +23,7 @@ import java.util.List;
 
 /**
  * Experimental extension of MecanumDrive that uses AprilTags for relocalization.
- *
+ * <p>
  * Released under the BSD 3-Clause Clear License by j5155 from 12087 Capital City Dynamics
  * Portions of this code made and released under the BSD 3-Clause Clear License by Michael from 14343 and by Ryan Brott
  */
@@ -47,12 +47,9 @@ public class AprilTagDrive extends MecanumDrive {
     Vector2d cameraOffset;
     final AprilTagProcessor aprilTag;
     public List<AprilTagDetection> currentDetections;
-    public AprilTagDetection lastDetection;
     final KalmanFilter.Vector2dKalmanFilter posFilter;
-    Pose2d aprilPose;
     Pose2d localizerPose;
     Vector2d filteredVector;
-    boolean frontCamActive = true;
     /**
      * Init with just one camera; use instead of MecanumDrive
      * @param hardwareMap the hardware map
@@ -114,19 +111,15 @@ public class AprilTagDrive extends MecanumDrive {
         currentDetections = aprilTag.getDetections();
         Vector2d averagePos = new Vector2d(0,0); // starting pose to add the rest to
         if (this.currentDetections.isEmpty()) return null; // if we don't see any tags, give up (USES NEED TO HANDLE NULL)
-        Vector2d RobotPos;
 
         // Step through the list of detections and calculate the robot position from each one.
         for (AprilTagDetection detection : currentDetections) {
             if (detection.metadata != null) {
 
-                RobotPos = getFCPosition(detection, localizerPose.heading.log(), Params.cameraOffset);
-
-                // we're going to get the average here by adding them all up and dividingA the number of detections
+                // we're going to get the average here by adding them all up and dividing by the number of detections
                 // we do this because the backdrop has 3 tags, so we get 3 positions
                 // hopefully by averaging them we can get a more accurate position
-                lastDetection = detection;
-                averagePos = averagePos.plus(RobotPos);
+                averagePos = averagePos.plus(getFCPosition(detection, localizerPose.heading.log(), Params.cameraOffset));
 
             }
         }   // end for() loop
@@ -152,8 +145,6 @@ public class AprilTagDrive extends MecanumDrive {
         // rotate RC coordinates to be field-centric
         double x2 = x*Math.cos(botheading)+y*Math.sin(botheading);
         double y2 = x*-Math.sin(botheading)+y*Math.cos(botheading);
-        double absX;
-        double absY;
         // add FC coordinates to apriltag position
         // tags is just the CS apriltag library
         VectorF tagpose = getCenterStageTagLibrary().lookupTag(detection.id).fieldPosition;
@@ -161,15 +152,16 @@ public class AprilTagDrive extends MecanumDrive {
 
         // todo: this will need to be changed for next season (use tag heading to automate??)
         if (!detection.metadata.name.contains("Audience")) { // is it a backdrop tag?
-            absX = tagpose.get(0) + y2;
-            absY = tagpose.get(1) - x2;
+            return new Vector2d(
+                    tagpose.get(0) + y2,
+                    tagpose.get(1) - x2);
 
         } else {
-            absX = tagpose.get(0) - y2;
-            absY = tagpose.get(1) + x2;
+            return new Vector2d(
+                    tagpose.get(0) - y2,
+                    tagpose.get(1) + x2);
 
         }
-        return new Vector2d(absX, absY);
     }
 
     // this custom position library credit Michael from team 14343 (@overkil on Discord)
