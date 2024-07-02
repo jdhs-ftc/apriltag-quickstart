@@ -21,20 +21,20 @@ class FusionDrive(hw: HardwareMap, pose: Pose2d, val processor: AprilTagProcesso
     var filtered = Vector2d(0.0, 0.0)
 
     override fun updatePoseEstimate(): PoseVelocity2d {
-        val twist = localizer.update()
+        val posVel = super.updatePoseEstimate()
 
-        val predicted = pose + twist.value()
+        val predicted = pose
 
         val obtained = positionFromTags()
 
         pose = if (obtained == Vector2d(0.0, 0.0)) {
-            filtered = filter.update(twist.value(), predicted.position)
+            //filtered = filter.update(twist.value(), predicted.position)
 
             predicted
         } else {
-            filtered = filter.update(twist.value(), obtained)
+            //filtered = filter.update(twist.value(), obtained)
 
-            Pose2d(filtered, predicted.heading)
+            Pose2d(obtained, predicted.heading)
         }
 
         poseHistory.add(pose)
@@ -45,7 +45,7 @@ class FusionDrive(hw: HardwareMap, pose: Pose2d, val processor: AprilTagProcesso
 
         estimatedPoseWriter.write(PoseMessage(pose))
 
-        return twist.velocity().value()
+        return posVel
     }
 
     fun positionFromTags(): Vector2d {

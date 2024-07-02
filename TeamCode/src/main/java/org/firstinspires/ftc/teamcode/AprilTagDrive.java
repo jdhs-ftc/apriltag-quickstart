@@ -27,7 +27,7 @@ import java.util.List;
  * Released under the BSD 3-Clause Clear License by j5155 from 12087 Capital City Dynamics
  * Portions of this code made and released under the BSD 3-Clause Clear License by Michael from 14343 and by Ryan Brott
  */
-public class AprilTagDrive extends MecanumDrive {
+public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumDrive, change to your drive class (e.g. TankDrive, SparkFunOTOSDrive)
     @Config
     static class Params {
         // distance FROM robot center TO camera (inches)
@@ -46,7 +46,6 @@ public class AprilTagDrive extends MecanumDrive {
 
     Vector2d cameraOffset;
     final AprilTagProcessor aprilTag;
-    public List<AprilTagDetection> currentDetections;
     final KalmanFilter.Vector2dKalmanFilter posFilter;
     Pose2d localizerPose;
     Vector2d filteredVector;
@@ -65,11 +64,10 @@ public class AprilTagDrive extends MecanumDrive {
     }
     @Override
     public PoseVelocity2d updatePoseEstimate() {
-        // RR standard: get the movement between loops from the localizer
-        // RR assumes there's no way to get absolute position and gets relative between loops
-        // note that this adds on top of existing pose, even if that pose was just corrected by apriltag
-        Twist2dDual<Time> twist = localizer.update();
-        localizerPose = pose.plus(twist.value());
+        // RR standard: get the latest pose from the upstream updatePoseEstimate
+        // that will change the pose variable to the pose based on odo or drive encoders (or OTOS)
+        PoseVelocity2d posVel = super.updatePoseEstimate();
+        localizerPose = pose;
         // Get the absolute position from the camera
         Vector2d aprilVector = getVectorBasedOnTags();
 
@@ -82,30 +80,27 @@ public class AprilTagDrive extends MecanumDrive {
             // TODO: apriltags unreliable at higher speeds? speed limit? global shutter cam? https://discord.com/channels/225450307654647808/225451520911605765/1164034719369941023
 
             // we input the change from odometry with the april absolute pose into the kalman filter
-            filteredVector = posFilter.update(twist.value(), aprilVector);
+            // TODO: remove all references to kalman filter
+            // using the updatePoseEstimate method doesn't give us a twist
+            // and we need to use updatePoseEstimate to ensure OTOS support
+
+            //filteredVector = posFilter.update(twist.value(), aprilVector);
+
             // then we add the kalman filtered position to the localizer heading as a pose
             pose = new Pose2d(aprilVector, localizerPose.heading); // TODO: aprilVector should be filteredVector to use kalman filter (kalman filter is untested)
         } else {
             // if we can't see tags, we use the localizer position to update the kalman fiter
             // not sure if this is logical at all??
             // UNTESTED, WE WERENT USING FILTEREDVECTOR :skull:
-            filteredVector = posFilter.update(twist.value(), localizerPose.position);
+            //filteredVector = posFilter.update(twist.value(), localizerPose.position);
 
             // then just use the existing pose
             pose = localizerPose;
         }
 
+        FlightRecorder.write("APRILTAG_POSE", new PoseMessage(pose));
 
-
-        // rr standard
-        poseHistory.add(pose);
-        while (poseHistory.size() > 100) {
-            poseHistory.removeFirst();
-        }
-
-        FlightRecorder.write("ESTIMATED_POSE", new PoseMessage(pose));
-
-        return twist.velocity().value(); // trust the existing localizer for speeds; because I don't know how to do it with apriltags
+        return posVel; // trust the existing localizer for speeds; because I don't know how to do it with apriltags
     }
     public Vector2d getVectorBasedOnTags() {
         return aprilTag.getDetections().stream() // get the tag detections as a Java stream
