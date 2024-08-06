@@ -5,7 +5,6 @@ import com.acmerobotics.roadrunner.PoseVelocity2d
 import com.acmerobotics.roadrunner.Vector2d
 import com.qualcomm.robotcore.hardware.HardwareMap
 import org.firstinspires.ftc.robotcore.external.matrices.VectorF
-import org.firstinspires.ftc.teamcode.FusionDrive.Parameters.coefficients
 import org.firstinspires.ftc.teamcode.FusionDrive.Parameters.offset
 import org.firstinspires.ftc.teamcode.messages.PoseMessage
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection
@@ -17,8 +16,6 @@ import kotlin.math.sin
  * Kotlin port of AprilTagDrive written by @hextanium/@drhextanium from team 4017
  */
 class FusionDrive(hw: HardwareMap, pose: Pose2d, val processor: AprilTagProcessor) : MecanumDrive(hw, pose) {
-    val filter = KalmanFilter.Vector2dKalmanFilter(coefficients.Q, coefficients.R)
-    var filtered = Vector2d(0.0, 0.0)
 
     override fun updatePoseEstimate(): PoseVelocity2d {
         val posVel = super.updatePoseEstimate()
@@ -28,12 +25,8 @@ class FusionDrive(hw: HardwareMap, pose: Pose2d, val processor: AprilTagProcesso
         val obtained = positionFromTags()
 
         pose = if (obtained == Vector2d(0.0, 0.0)) {
-            //filtered = filter.update(twist.value(), predicted.position)
-
             predicted
         } else {
-            //filtered = filter.update(twist.value(), obtained)
-
             Pose2d(obtained, predicted.heading)
         }
 
@@ -83,8 +76,6 @@ class FusionDrive(hw: HardwareMap, pose: Pose2d, val processor: AprilTagProcesso
 
     object Parameters {
         val offset = Vector2d(0.0,0.0);
-
-        val coefficients = KalmanFilter.KalmanCoefficients(0.1, 0.4)
     }
     fun VectorF.toVector2d() = Vector2d(this[0].toDouble(), this[1].toDouble())
 }

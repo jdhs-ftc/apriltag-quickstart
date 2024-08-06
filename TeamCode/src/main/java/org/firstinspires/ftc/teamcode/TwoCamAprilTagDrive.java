@@ -54,7 +54,6 @@ public class TwoCamAprilTagDrive extends MecanumDrive {
     AprilTagProcessor aprilTagFront = null;
     public List<AprilTagDetection> totalDetections;
     public AprilTagDetection lastDetection;
-    final KalmanFilter.Vector2dKalmanFilter posFilter;
     Pose2d aprilPose;
     Pose2d localizerPose;
     Vector2d filteredVector;
@@ -69,7 +68,6 @@ public class TwoCamAprilTagDrive extends MecanumDrive {
     public TwoCamAprilTagDrive(HardwareMap hardwareMap, Pose2d pose, AprilTagProcessor aprilTagBack) {
         super(hardwareMap, pose);
         this.aprilTagBack = aprilTagBack;
-        this.posFilter = new KalmanFilter.Vector2dKalmanFilter(Params.kalmanFilterQ, Params.kalmanFilterR);
         this.cameraOffset = Params.camera1Offset;
 
     }
@@ -84,7 +82,6 @@ public class TwoCamAprilTagDrive extends MecanumDrive {
         super(hardwareMap, pose);
         this.aprilTagBack = aprilTagBack;
         this.aprilTagFront = aprilTagFront;
-        this.posFilter = new KalmanFilter.Vector2dKalmanFilter(Params.kalmanFilterQ, Params.kalmanFilterR);
     }
     @Override
     public PoseVelocity2d updatePoseEstimate() {
@@ -104,14 +101,9 @@ public class TwoCamAprilTagDrive extends MecanumDrive {
             // localizer heading, for us and in TwoDeadWheelLocalizer, is IMU and absolute-ish
             // TODO: apriltags unreliable at higher speeds? speed limit? global shutter cam? https://discord.com/channels/225450307654647808/225451520911605765/1164034719369941023
 
-            // we input the change from odometry with the april absolute pose into the kalman filter
-            filteredVector = posFilter.update(twist.value(), aprilVector);
-            // then we add the kalman filtered position to the localizer heading as a pose
+            // then we add the apriltag position to the localizer heading as a pose
             pose = new Pose2d(aprilVector, localizerPose.heading); // TODO: aprilVector should be filteredVector to use kalman filter (kalman filter is untested)
         } else {
-            // if we can't see tags, we use the localizer position to update the kalman fiter
-            // not sure if this is logical at all?? seems to work
-            filteredVector = posFilter.update(twist.value(), localizerPose.position);
 
             // then just use the existing pose
             pose = localizerPose;

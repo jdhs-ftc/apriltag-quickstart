@@ -36,17 +36,10 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
                 -6,
                 4);
 
-        /*
-         * Q model covariance (trust in model), default 0.1 HIGHER IS LESS TRUST
-         * R sensor covariance (trust in sensor), default 0.4
-         */
-        static double kalmanFilterQ = 0.4;
-        static double kalmanFilterR = 0.1;
     }
 
     Vector2d cameraOffset;
     final AprilTagProcessor aprilTag;
-    final KalmanFilter.Vector2dKalmanFilter posFilter;
     Pose2d localizerPose;
     Vector2d filteredVector;
     /**
@@ -58,7 +51,6 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
     public AprilTagDrive(HardwareMap hardwareMap, Pose2d pose, AprilTagProcessor aprilTag) {
         super(hardwareMap, pose);
         this.aprilTag = aprilTag;
-        this.posFilter = new KalmanFilter.Vector2dKalmanFilter(Params.kalmanFilterQ, Params.kalmanFilterR);
         this.cameraOffset = Params.cameraOffset;
 
     }
@@ -89,18 +81,13 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
             // then we add the kalman filtered position to the localizer heading as a pose
             pose = new Pose2d(aprilVector, localizerPose.heading); // TODO: aprilVector should be filteredVector to use kalman filter (kalman filter is untested)
         } else {
-            // if we can't see tags, we use the localizer position to update the kalman fiter
-            // not sure if this is logical at all??
-            // UNTESTED, WE WERENT USING FILTEREDVECTOR :skull:
-            //filteredVector = posFilter.update(twist.value(), localizerPose.position);
-
             // then just use the existing pose
             pose = localizerPose;
         }
 
         FlightRecorder.write("APRILTAG_POSE", new PoseMessage(pose));
 
-        return posVel; // trust the existing localizer for speeds; because I don't know how to do it with apriltags
+        return posVel; // trust the existing localizer for speeds, because I don't know how to do it with apriltags
     }
     public Vector2d getVectorBasedOnTags() {
         return aprilTag.getDetections().stream() // get the tag detections as a Java stream
@@ -108,7 +95,7 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
                 .map(detection -> getFCPosition(detection, localizerPose.heading.log(), Params.cameraOffset))
                 // add them together
                 .reduce(new Vector2d(0, 0), Vector2d::plus)
-                // divide by the number of tags to get the average
+                // divide by the amount of tags to get the average
                 .div(aprilTag.getDetections().size());
     }
 
