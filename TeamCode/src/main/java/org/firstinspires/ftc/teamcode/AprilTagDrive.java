@@ -71,15 +71,6 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
             // localizer heading, for us and in TwoDeadWheelLocalizer, is IMU and absolute-ish
             // TODO: apriltags unreliable at higher speeds? speed limit? global shutter cam? https://discord.com/channels/225450307654647808/225451520911605765/1164034719369941023
 
-            // there could potentially be a delay between the time the atags were detected and this update function
-            // and during that time, the robot could have moved considerably
-            // so we use the current speed to calculate how far we've probably traveled from the atag pose
-
-            aprilVector = aprilVector.plus( // start with the atag vector
-                    posVel.linearVel // get the linear velocity from upstream localization (this is in inches/sec)
-                            .times((System.nanoTime() - tagDetectTime) // multiply it by the time since the tag was detected
-                                    * 1e-9)); // and convert it to seconds
-
             // then we add the apriltag position to the localizer heading as a pose
             pose = new Pose2d(aprilVector, localizerPose.heading); // TODO: aprilVector should be filteredVector to use kalman filter (kalman filter is untested)
         }
