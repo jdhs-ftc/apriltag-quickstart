@@ -1,12 +1,15 @@
 package org.firstinspires.ftc.teamcode;
 
+import androidx.annotation.Nullable;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.PoseVelocity2d;
+import com.acmerobotics.roadrunner.Twist2d;
 import com.acmerobotics.roadrunner.Vector2d;
 import com.acmerobotics.roadrunner.ftc.FlightRecorder;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import com.sun.source.tree.LabeledStatementTree;
 import org.firstinspires.ftc.robotcore.external.matrices.VectorF;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Quaternion;
@@ -15,14 +18,14 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
-import java.util.ArrayList;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Experimental extension of MecanumDrive that uses AprilTags for relocalization.
  * <p>
  * Released under the BSD 3-Clause Clear License by j5155 from 12087 Capital City Dynamics
- * Portions of this code released under the BSD 3-Clause Clear License by Michael from 14343 and by Ryan Brott
+ * Portions of this code released under the BSD 3-Clause Clear License by Michael from team 14343,
+ * Tarun from team 12791, and by Ryan Brott from team 8367
  */
 public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumDrive, change to your drive class (e.g. TankDrive, SparkFunOTOSDrive)
     @Config
@@ -134,6 +137,81 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
                     tagpose.get(0) - y2,
                     tagpose.get(1) + x2);
 
+        }
+    }
+    // credit Tarun from 12791 (@_skull.emoji_) for this class
+    public class PosePatcher {
+        public final TreeMap<Long, Pose2d> map = new TreeMap<>();
+
+        public final int timeout;
+
+        public PosePatcher(int timeoutMS) {
+            this.timeout = timeoutMS;
+        }
+
+        public void add(Pose2d pose) {
+            map.put(System.currentTimeMillis(), pose);
+        }
+
+        public void removeOld() {
+            long time = System.currentTimeMillis() - timeout;
+            while (!map.isEmpty()) {
+                Long key = map.floorKey(time);
+                if (key != null)
+                    map.remove(key);
+                else break;
+            }
+        }
+
+        @Nullable
+        public Pose2d patch(Pose2d newPose, long timestampMS) {
+            Map.Entry<Long, Pose2d> val = map.floorEntry(timestampMS);
+            if (val == null) return null;
+
+            return this.patch(newPose, val);
+        }
+
+        @Nullable
+        public Pose2d patch(Vector2d newVec, long timestampMS) {
+            Map.Entry<Long, Pose2d> val = map.floorEntry(timestampMS);
+            if (val == null) return null;
+
+            return this.patch(new Pose2d(newVec, val.getValue().heading), val);
+        }
+
+        @Nullable
+        public Pose2d patch(double newHeading, long timestampMS) {
+            Map.Entry<Long, Pose2d> val = map.floorEntry(timestampMS);
+            if (val == null) return null;
+
+            return this.patch(new Pose2d(val.getValue().position, newHeading), val);
+        }
+
+        private Pose2d patch(Pose2d newPose, Map.Entry<Long, Pose2d> val) {
+            // Find pose difference from reference
+            Twist2d diff = newPose.minus(val.getValue());
+
+            // Update reference pose
+            val.setValue(newPose);
+
+            Map.Entry<Long, Pose2d> current = val;
+            while (true) {
+                // Get the next pose in list, otherwise return the most recent one (which should be the current pose)
+                Map.Entry<Long, Pose2d> next = map.higherEntry(current.getKey());
+                if (next == null) return current.getValue();
+
+                // Add the initial pose difference to the pose
+                Pose2d pose = next.getValue().plus(diff);
+
+                // Rotate the pose around the reference pose by the angle difference
+                next.setValue(new Pose2d(
+                        newPose.position.x + (pose.position.x - newPose.position.x) * Math.cos(diff.angle) - (pose.position.y - newPose.position.y) * Math.sin(diff.angle),
+                        newPose.position.y + (pose.position.x - newPose.position.x) * Math.sin(diff.angle) + (pose.position.y - newPose.position.y) * Math.cos(diff.angle),
+                        pose.heading.toDouble()
+                ));
+
+                current = next;
+            }
         }
     }
 
