@@ -42,6 +42,7 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
     final AprilTagProcessor aprilTag;
     Pose2d localizerPose;
     long tagDetectTime;
+    PosePatcher posePatcher = new PosePatcher(1000000000); // timeout of 1 second
     /**
      * Init with just one camera; use instead of MecanumDrive
      * @param hardwareMap the hardware map
@@ -62,6 +63,8 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
         localizerPose = pose;
         // Get the absolute position from the camera
         Vector2d aprilVector = getVectorBasedOnTags();
+        posePatcher.add(pose);
+        posePatcher.removeOld();
 
 
         // it's possible we can't see any tags, so we need to check for a vector of 0
@@ -71,18 +74,27 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
             // localizer heading, for us and in TwoDeadWheelLocalizer, is IMU and absolute-ish
             // TODO: apriltags unreliable at higher speeds? speed limit? global shutter cam? https://discord.com/channels/225450307654647808/225451520911605765/1164034719369941023
 
-            // there could potentially be a delay between the time the atags were detected and this update function
-            // and during that time, the robot could have moved considerably
-            // so we use the current speed to calculate how far we've probably traveled from the atag pose
+            // Get the backtracked pose from PosePatcher
+            // The issue is that the atag data can be considerably delayed
+            // depending on the frame rate and loop time
+            // So pose patcher calculates what the current pose should actually be
+            // based on the timestamp the atag data was received
 
-            aprilVector = aprilVector.plus( // start with the atag vector
-                    posVel.linearVel // get the linear velocity from upstream localization (this is in inches/sec)
-                            .times((System.nanoTime() - tagDetectTime) // multiply it by the time since the tag was detected
-                                    * 1e-9)); // and convert it to seconds
+            // note that the atag position is a vector; we do not get heading from atags and assume
+            // the existing localization method (IMU) is good for that
+            Pose2d backtrackedTagPose = posePatcher.patch(aprilVector,tagDetectTime);
 
-            // then we add the apriltag position to the localizer heading as a pose
-            pose = new Pose2d(aprilVector, localizerPose.heading); // TODO: aprilVector should be filteredVector to use kalman filter (kalman filter is untested)
+            // this is null when pose patcher doesn't find any pose before now in its history
+            // which should not be possible but just in case, we revert to assuming the atag pose came in now instead
+            if (backtrackedTagPose == null) {
+                // then we add the apriltag position to the localizer heading as a pose
+                backtrackedTagPose = new Pose2d(aprilVector, localizerPose.heading);
+            }
+
+
+            pose = backtrackedTagPose;
         }
+
 
         FlightRecorder.write("APRILTAG_POSE", new PoseMessage(pose));
 
@@ -137,81 +149,6 @@ public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumD
                     tagpose.get(0) - y2,
                     tagpose.get(1) + x2);
 
-        }
-    }
-    // credit Tarun from 12791 (@_skull.emoji_) for this class
-    public class PosePatcher {
-        public final TreeMap<Long, Pose2d> map = new TreeMap<>();
-
-        public final int timeout;
-
-        public PosePatcher(int timeoutMS) {
-            this.timeout = timeoutMS;
-        }
-
-        public void add(Pose2d pose) {
-            map.put(System.currentTimeMillis(), pose);
-        }
-
-        public void removeOld() {
-            long time = System.currentTimeMillis() - timeout;
-            while (!map.isEmpty()) {
-                Long key = map.floorKey(time);
-                if (key != null)
-                    map.remove(key);
-                else break;
-            }
-        }
-
-        @Nullable
-        public Pose2d patch(Pose2d newPose, long timestampMS) {
-            Map.Entry<Long, Pose2d> val = map.floorEntry(timestampMS);
-            if (val == null) return null;
-
-            return this.patch(newPose, val);
-        }
-
-        @Nullable
-        public Pose2d patch(Vector2d newVec, long timestampMS) {
-            Map.Entry<Long, Pose2d> val = map.floorEntry(timestampMS);
-            if (val == null) return null;
-
-            return this.patch(new Pose2d(newVec, val.getValue().heading), val);
-        }
-
-        @Nullable
-        public Pose2d patch(double newHeading, long timestampMS) {
-            Map.Entry<Long, Pose2d> val = map.floorEntry(timestampMS);
-            if (val == null) return null;
-
-            return this.patch(new Pose2d(val.getValue().position, newHeading), val);
-        }
-
-        private Pose2d patch(Pose2d newPose, Map.Entry<Long, Pose2d> val) {
-            // Find pose difference from reference
-            Twist2d diff = newPose.minus(val.getValue());
-
-            // Update reference pose
-            val.setValue(newPose);
-
-            Map.Entry<Long, Pose2d> current = val;
-            while (true) {
-                // Get the next pose in list, otherwise return the most recent one (which should be the current pose)
-                Map.Entry<Long, Pose2d> next = map.higherEntry(current.getKey());
-                if (next == null) return current.getValue();
-
-                // Add the initial pose difference to the pose
-                Pose2d pose = next.getValue().plus(diff);
-
-                // Rotate the pose around the reference pose by the angle difference
-                next.setValue(new Pose2d(
-                        newPose.position.x + (pose.position.x - newPose.position.x) * Math.cos(diff.angle) - (pose.position.y - newPose.position.y) * Math.sin(diff.angle),
-                        newPose.position.y + (pose.position.x - newPose.position.x) * Math.sin(diff.angle) + (pose.position.y - newPose.position.y) * Math.cos(diff.angle),
-                        pose.heading.toDouble()
-                ));
-
-                current = next;
-            }
         }
     }
 
