@@ -26,6 +26,8 @@ import java.util.*;
  * Released under the BSD 3-Clause Clear License by j5155 from 12087 Capital City Dynamics
  * Portions of this code released under the BSD 3-Clause Clear License by Michael from team 14343,
  * Tarun from team 12791, and by Ryan Brott from team 8367
+ * 
+ * Original repository: https://github.com/jdhs-ftc/apriltag-quickstart
  */
 public class AprilTagDrive extends MecanumDrive { // TODO: if not using MecanumDrive, change to your drive class (e.g. TankDrive, SparkFunOTOSDrive)
     @Config
